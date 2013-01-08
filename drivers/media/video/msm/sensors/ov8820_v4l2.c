@@ -25,12 +25,20 @@
 #define OV8820_OTP_BANK      0x3D84
 #define OV8820_OTP_BANK_SIZE 0x20
 
+#define SWAP_2_BYTES(x) (((x << 8) & 0xff00) | \
+		(x >> 8))
+#define SWAP_4_BYTES(x) (((x) << 24) | \
+		(((x) << 8) & 0x00ff0000) | \
+		(((x) >> 8) & 0x0000ff00) | \
+		((x) >> 24))
+
 DEFINE_MUTEX(ov8820_mut);
 static struct msm_sensor_ctrl_t ov8820_s_ctrl;
 
-static struct regulator *reg_1p8, *reg_2p8;
+static struct regulator *reg_1p8;
 
 static struct otp_info_t otp_info;
+struct af_info_t af_info;
 
 static struct msm_camera_i2c_reg_conf ov8820_start_settings[] = {
 	{0x0100, 0x01},
@@ -53,8 +61,8 @@ static struct msm_camera_i2c_reg_conf ov8820_1080_settings[] = {
 	{0x3004, 0xce},
 	{0x3005, 0x10},
 	{0x3006, 0x00},
-	{0x3501, 0x74},
-	{0x3502, 0x60},
+	//{0x3501, 0x74},
+	//{0x3502, 0x60},
 	{0x370e, 0x00},
 	{0x3801, 0x00},
 	{0x3802, 0x01},
@@ -91,8 +99,8 @@ static struct msm_camera_i2c_reg_conf ov8820_prev_settings[] = {
 	{0x3004, 0xd5},
 	{0x3005, 0x11},
 	{0x3006, 0x11},
-	{0x3501, 0x4e},
-	{0x3502, 0xa0},
+	//{0x3501, 0x4e},
+	//{0x3502, 0xa0},
 	{0x370e, 0x08},
 	{0x3801, 0x00},
 	{0x3802, 0x00},
@@ -107,7 +115,7 @@ static struct msm_camera_i2c_reg_conf ov8820_prev_settings[] = {
 	{0x380c, 0x06},
 	{0x380d, 0xde},
 	{0x380e, 0x05},
-	{0x380f, 0x05},
+	{0x380f, 0x06},
 	{0x3811, 0x08},
 	{0x3813, 0x04},
 	{0x3814, 0x31},
@@ -129,8 +137,8 @@ static struct msm_camera_i2c_reg_conf ov8820_snap_settings[] = {
 	{0x3004, 0xbf},
 	{0x3005, 0x10},
 	{0x3006, 0x00},
-	{0x3501, 0x9a},
-	{0x3502, 0xa0},
+	//{0x3501, 0x9a},
+	//{0x3502, 0xa0},
 	{0x370e, 0x00},
 	{0x3801, 0x00},
 	{0x3712, 0xcc},
@@ -291,7 +299,7 @@ static struct msm_camera_i2c_reg_conf ov8820_recommend_settings[] = {
 	{0x380c, 0x06},
 	{0x380d, 0xde},
 	{0x380e, 0x05},
-	{0x380f, 0x05},
+	{0x380f, 0x06},
 	{0x3810, 0x00},
 	{0x3811, 0x08},
 	{0x3812, 0x00},
@@ -512,7 +520,7 @@ static struct msm_sensor_output_info_t ov8820_dimensions[] = {
 		.x_output = 0x660,
 		.y_output = 0x4C8,
 		.line_length_pclk = 0x6DE,
-		.frame_length_lines = 0x505,
+		.frame_length_lines = 0x506,
 		.vt_pixel_clk = 66700000,
 		.op_pixel_clk = 88000000,
 		.binning_factor = 2,
@@ -658,6 +666,17 @@ static int32_t ov8820_read_otp(struct msm_sensor_ctrl_t *s_ctrl)
 	}
 
 	memcpy((void *)&otp_info, otp, sizeof(struct otp_info_t));
+	memcpy(&af_info.af_man_type1, &(otp_info.otp_info[16]),
+			sizeof(uint32_t));
+	memcpy(&af_info.af_man_type2, &(otp_info.otp_info[20]),
+			sizeof(uint32_t));
+	memcpy(&af_info.af_act_type, &(otp_info.otp_info[25]),
+			sizeof(uint16_t));
+
+	af_info.af_act_type = SWAP_2_BYTES(af_info.af_act_type);
+	af_info.af_man_type1 = SWAP_4_BYTES(af_info.af_man_type1);
+	af_info.af_man_type2 = SWAP_4_BYTES(af_info.af_man_type2);
+
 	return rc;
 }
 
@@ -745,13 +764,12 @@ static int32_t ov8820_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 	struct msm_camera_sensor_platform_info *pinfo =
 		s_ctrl->sensordata->sensor_platform_info;
 
-	pr_info("ov8820_power_up R:%d P:%d D:%d A:%d 1.8:%s 2.8:%s\n",
+	pr_info("ov8820_power_up R:%d P:%d D:%d A:%d 1.8:%s\n",
 			pinfo->sensor_reset,
 			pinfo->sensor_pwd,
 			pinfo->digital_en,
 			pinfo->analog_en,
-			(pinfo->reg_1p8 ? pinfo->reg_1p8 : "-"),
-			pinfo->reg_2p8);
+			(pinfo->reg_1p8 ? pinfo->reg_1p8 : "-"));
 
 	/*obtain gpios*/
 	rc = gpio_request(pinfo->analog_en, "ov8820");
@@ -788,14 +806,10 @@ static int32_t ov8820_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 			goto power_up_done;
 	}
 
-	/*Turn on AF regulator*/
-	rc = ov8820_regulator_on(&reg_2p8, pinfo->reg_2p8, 2800000);
-	if (rc < 0)
-		goto power_up_done;
-
+	/* Wait for core supplies to power up */
 	usleep(10000);
 
-	/* Enable AVDD supply*/
+	/* Enable AVDD and AF supplies*/
 	gpio_direction_output(pinfo->analog_en, 1);
 	usleep(200);
 
@@ -832,7 +846,7 @@ static int32_t ov8820_power_down(
 	msm_sensor_probe_off(&s_ctrl->sensor_i2c_client->client->dev);
 	usleep(10000);
 
-	/*Disable AVDD*/
+	/*Disable AVDD and AF supplies*/
 	gpio_direction_output(pinfo->analog_en, 0);
 	usleep(15000);
 
@@ -842,7 +856,7 @@ static int32_t ov8820_power_down(
 	else
 		ov8820_regulator_off(reg_1p8, "1.8");
 
-	ov8820_regulator_off(reg_2p8, "2.8");
+	/* Wait for core to shut off */
 	usleep(10000);
 
 	/*Set PWRDWN Low*/
@@ -911,6 +925,41 @@ static int32_t ov8820_get_module_info(struct msm_sensor_ctrl_t *s_ctrl,
 	return 0;
 }
 
+int32_t ov8820_adjust_frame_lines(struct msm_sensor_ctrl_t *s_ctrl,
+		uint16_t res)
+{
+	uint16_t cur_line = 0;
+	uint16_t exp_fl_lines = 0;
+	uint8_t int_time[3];
+	if (s_ctrl->sensor_exp_gain_info) {
+		msm_camera_i2c_read_seq(s_ctrl->sensor_i2c_client,
+				s_ctrl->sensor_exp_gain_info->coarse_int_time_addr-1,
+				&int_time[0], 3);
+		cur_line |= int_time[0] << 12;
+		cur_line |= int_time[1] << 4;
+		cur_line |= int_time[2] >> 4;
+		exp_fl_lines = cur_line +
+				s_ctrl->sensor_exp_gain_info->vert_offset;
+		if (exp_fl_lines > s_ctrl->msm_sensor_reg->
+				output_settings[res].frame_length_lines) {
+			exp_fl_lines += (exp_fl_lines & 0x1);
+			msm_camera_i2c_write(s_ctrl->sensor_i2c_client,
+					s_ctrl->sensor_output_reg_addr->
+					frame_length_lines,
+					exp_fl_lines,
+					MSM_CAMERA_I2C_WORD_DATA);
+		}
+		CDBG("%s cur_line %x cur_fl_lines %x, exp_fl_lines %x\n",
+				__func__,
+				cur_line,
+				s_ctrl->msm_sensor_reg->
+				output_settings[res].frame_length_lines,
+				exp_fl_lines);
+	}
+	return 0;
+}
+
+
 static int __init msm_sensor_init_module(void)
 {
 	return i2c_add_driver(&ov8820_i2c_driver);
@@ -946,6 +995,7 @@ static struct msm_sensor_fn_t ov8820_func_tbl = {
 	.sensor_power_up                = ov8820_power_up,
 	.sensor_power_down              = ov8820_power_down,
 	.sensor_match_id                = ov8820_match_id,
+	.sensor_adjust_frame_lines      = ov8820_adjust_frame_lines,
 	.sensor_get_module_info         = ov8820_get_module_info,
 };
 
