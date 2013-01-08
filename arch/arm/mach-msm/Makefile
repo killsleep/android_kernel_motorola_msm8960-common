@@ -4,6 +4,7 @@ CFLAGS_REMOVE_clock.o = -pg
 CFLAGS_REMOVE_acpuclock.o = -pg
 CFLAGS_REMOVE_scm.o = -pg
 endif
+CFLAGS_scm.o :=$(call as-instr,.arch_extension sec,-DREQUIRES_SEC=1)
 
 obj-y += io.o dma.o memory.o
 ifndef CONFIG_ARM_ARCH_TIMER
@@ -185,6 +186,7 @@ ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 	obj-y += subsystem_restart.o
 	obj-y += ramdump.o
 	obj-y += modem_coredump.o
+	obj-y += wcnss_coredump.o
 	obj-$(CONFIG_ARCH_MSM8X60) += modem-8660.o lpass-8660.o
 endif
 obj-$(CONFIG_MSM_SYSMON_COMM) += sysmon.o
@@ -337,3 +339,5 @@ obj-$(CONFIG_MSM_CACHE_ERP) += cache_erp.o
 obj-$(CONFIG_MSM_CACHE_DUMP) += msm_cache_dump.o
 obj-$(CONFIG_PM_DEBUG) += pm_debug.o
 obj-$(CONFIG_HOB_SHARED_RAM_MMI) += mmi_hob_ram_mmap.o
+
+obj-$(CONFIG_MSM_USE_USER_ACCESSIBLE_TIMERS) += timer_page.o

@@ -177,7 +177,9 @@ unsigned long get_mm_counter(struct mm_struct *mm, int member)
 		return 0;
 	return (unsigned long)val;
 }
+#ifdef CONFIG_SUPPORT_VMW
 EXPORT_SYMBOL_GPL(get_mm_counter);
+#endif
 
 void sync_mm_rss(struct task_struct *task, struct mm_struct *mm)
 {
@@ -1229,16 +1231,24 @@ static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 	do {
 		next = pmd_addr_end(addr, end);
 		if (pmd_trans_huge(*pmd)) {
-			if (next-addr != HPAGE_PMD_SIZE) {
+			if (next - addr != HPAGE_PMD_SIZE) {
 				VM_BUG_ON(!rwsem_is_locked(&tlb->mm->mmap_sem));
 				split_huge_page_pmd(vma->vm_mm, pmd);
 			} else if (zap_huge_pmd(tlb, vma, pmd))
-				continue;
+				goto next;
 			/* fall through */
 		}
-		if (pmd_none_or_clear_bad(pmd))
-			continue;
+		/*
+		 * Here there can be other concurrent MADV_DONTNEED or
+		 * trans huge page faults running, and if the pmd is
+		 * none or trans huge it can change under us. This is
+		 * because MADV_DONTNEED holds the mmap_sem in read
+		 * mode.
+		 */
+		if (pmd_none_or_trans_huge_or_clear_bad(pmd))
+			goto next;
 		next = zap_pte_range(tlb, vma, pmd, addr, next, details);
+next:
 		cond_resched();
 	} while (pmd++, addr = next, addr != end);
 
@@ -1515,7 +1525,7 @@ split_fallthrough:
 	}
 
 	if (flags & FOLL_GET)
-		get_page(page);
+		get_page_foll(page);
 	if (flags & FOLL_TOUCH) {
 		if ((flags & FOLL_WRITE) &&
 		    !pte_dirty(pte) && !PageDirty(page))
@@ -1705,6 +1715,19 @@ int __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 			}
 			pte_unmap(pte);
 			goto next_page;
+		}
+
+		if (use_user_accessible_timers()) {
+			if (!vma && in_user_timers_area(mm, start)) {
+				int goto_next_page = 0;
+				int user_timer_ret = get_user_timer_page(vma,
+					mm, start, gup_flags, pages, i,
+					&goto_next_page);
+				if (goto_next_page)
+					goto next_page;
+				else
+					return user_timer_ret;
+			}
 		}
 
 		if (!vma ||

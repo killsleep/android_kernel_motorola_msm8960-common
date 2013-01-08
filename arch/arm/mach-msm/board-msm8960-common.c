@@ -580,6 +580,71 @@ struct msm_camera_gpio_conf msm_camif_gpio_conf_mclk1 = {
 	.cam_gpio_tbl = msm_cam_gpio_2d_tbl_mclk1,
 	.cam_gpio_tbl_size = ARRAY_SIZE(msm_cam_gpio_2d_tbl_mclk1),
 };
+
+void update_camera_gpio_cfg(struct msm_camera_sensor_info sensor_info,
+		uint8_t drv_strength)
+{
+	int i;
+	int num_configs = ARRAY_SIZE(msm8960_cam_common_configs);
+	bool found = false;
+
+	for (i = 0; i < num_configs; i++) {
+		if (msm8960_cam_common_configs[i].gpio ==
+				sensor_info.gpio_conf->cam_gpio_tbl[0]) {
+			found = true;
+			break;
+		}
+	}
+
+	if (!found) {
+		pr_err("%s: Unable to configure mclk gpio!\n", __func__);
+		return;
+	}
+
+	switch (drv_strength) {
+	case 0:
+		msm8960_cam_common_configs[i].settings[0]->drv =
+			GPIOMUX_DRV_2MA;
+		break;
+	case 1:
+		msm8960_cam_common_configs[i].settings[0]->drv =
+			GPIOMUX_DRV_4MA;
+		break;
+	case 2:
+		msm8960_cam_common_configs[i].settings[0]->drv =
+			GPIOMUX_DRV_6MA;
+		break;
+	case 3:
+		msm8960_cam_common_configs[i].settings[0]->drv =
+			GPIOMUX_DRV_8MA;
+		break;
+	case 4:
+		msm8960_cam_common_configs[i].settings[0]->drv =
+			GPIOMUX_DRV_10MA;
+		break;
+	case 5:
+		msm8960_cam_common_configs[i].settings[0]->drv =
+			GPIOMUX_DRV_12MA;
+		break;
+	case 6:
+		msm8960_cam_common_configs[i].settings[0]->drv =
+			GPIOMUX_DRV_14MA;
+		break;
+	case 7:
+		msm8960_cam_common_configs[i].settings[0]->drv =
+			GPIOMUX_DRV_16MA;
+		break;
+	default:
+			pr_err("%s: Unable to find correct drive strength!\n",
+					__func__);
+	}
+
+	msm_gpiomux_install(msm8960_cam_common_configs,
+			ARRAY_SIZE(msm8960_cam_common_configs));
+	return;
+}
+
+
 #endif
 
 #ifdef CONFIG_USB_EHCI_MSM_HSIC
@@ -821,7 +886,7 @@ static void __init size_pmem_devices(void)
 	if (!pmem_param_set) {
 		if (machine_is_msm8960_liquid())
 			pmem_size = MSM_LIQUID_PMEM_SIZE;
-		if (hdmi_is_primary)
+		if (msm8960_hdmi_as_primary_selected())
 			pmem_size = MSM_HDMI_PRIM_PMEM_SIZE;
 	}
 
@@ -860,7 +925,11 @@ static int msm8960_paddr_to_memtype(unsigned int paddr)
 	return MEMTYPE_EBI1;
 }
 
+#ifdef CONFIG_QCACHE
 #define FMEM_ENABLED 1
+#else
+#define FMEM_ENABLED 0
+#endif
 
 #ifdef CONFIG_ION_MSM
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
@@ -1001,10 +1070,11 @@ static void __init adjust_mem_for_liquid(void)
 		if (machine_is_msm8960_liquid())
 			msm_ion_sf_size = MSM_LIQUID_ION_SF_SIZE;
 
-		if (hdmi_is_primary)
+		if (msm8960_hdmi_as_primary_selected())
 			msm_ion_sf_size = MSM_HDMI_PRIM_ION_SF_SIZE;
 
-		if (machine_is_msm8960_liquid() || hdmi_is_primary) {
+		if (machine_is_msm8960_liquid() ||
+            msm8960_hdmi_as_primary_selected()) {
 			for (i = 0; i < ion_pdata.nr; i++) {
 				if (ion_pdata.heaps[i].id == ION_SF_HEAP_ID) {
 					ion_pdata.heaps[i].size =
@@ -1367,79 +1437,6 @@ int msm8960_change_memory_power(u64 start, u64 size,
 }
 
 #ifdef CONFIG_MSM_BUS_SCALING
-static struct msm_bus_vectors rotator_init_vectors[] = {
-	{
-		.src = MSM_BUS_MASTER_ROTATOR,
-		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 0,
-		.ib = 0,
-	},
-};
-
-static struct msm_bus_vectors rotator_ui_vectors[] = {
-	{
-		.src = MSM_BUS_MASTER_ROTATOR,
-		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab  = (1280 * 720 * 4 * 2 * 60),
-		.ib  = (1280 * 720 * 4 * 2 * 60 * 1.5),
-	},
-};
-
-static struct msm_bus_vectors rotator_vga_vectors[] = {
-	{
-		.src = MSM_BUS_MASTER_ROTATOR,
-		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab  = (640 * 480 * 2 * 2 * 30),
-		.ib  = (640 * 480 * 2 * 2 * 30 * 1.5),
-	},
-};
-static struct msm_bus_vectors rotator_720p_vectors[] = {
-	{
-		.src = MSM_BUS_MASTER_ROTATOR,
-		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab  = (1280 * 736 * 2 * 2 * 30),
-		.ib  = (1280 * 736 * 2 * 2 * 30 * 1.5),
-	},
-};
-
-static struct msm_bus_vectors rotator_1080p_vectors[] = {
-	{
-		.src = MSM_BUS_MASTER_ROTATOR,
-		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab  = 2000000000UL,
-		.ib  = 2000000000UL,
-	},
-};
-
-static struct msm_bus_paths rotator_bus_scale_usecases[] = {
-	{
-		ARRAY_SIZE(rotator_init_vectors),
-		rotator_init_vectors,
-	},
-	{
-		ARRAY_SIZE(rotator_ui_vectors),
-		rotator_ui_vectors,
-	},
-	{
-		ARRAY_SIZE(rotator_vga_vectors),
-		rotator_vga_vectors,
-	},
-	{
-		ARRAY_SIZE(rotator_720p_vectors),
-		rotator_720p_vectors,
-	},
-	{
-		ARRAY_SIZE(rotator_1080p_vectors),
-		rotator_1080p_vectors,
-	},
-};
-
-struct msm_bus_scale_pdata rotator_bus_scale_pdata = {
-	rotator_bus_scale_usecases,
-	ARRAY_SIZE(rotator_bus_scale_usecases),
-	.name = "rotator",
-};
-
 static struct msm_bus_vectors dtv_bus_init_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
@@ -1602,18 +1599,9 @@ struct msm_bus_scale_pdata mdp_bus_scale_pdata = {
 
 #endif
 
-static int mdp_core_clk_rate_table[] = {
-	85330000,
-	85330000,
-	160000000,
-	200000000,
-};
-
 struct msm_panel_common_pdata mdp_pdata = {
 	.gpio = MDP_VSYNC_GPIO,
-	.mdp_core_clk_rate = 85330000,
-	.mdp_core_clk_table = mdp_core_clk_rate_table,
-	.num_mdp_clk = ARRAY_SIZE(mdp_core_clk_rate_table),
+    .mdp_max_clk = 200000000,
 #ifdef CONFIG_MSM_BUS_SCALING
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
@@ -1661,10 +1649,15 @@ static struct msm_gpiomux_config msm8960_mdp_vsync_configs[] __initdata = {
 };
 
 #ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
-unsigned char hdmi_is_primary = 1;
+static unsigned char hdmi_is_primary = 1;
 #else
-unsigned char hdmi_is_primary;
+static unsigned char hdmi_is_primary;
 #endif
+
+unsigned char msm8960_hdmi_as_primary_selected(void)
+{
+   return hdmi_is_primary;
+}
 
 static struct resource msm_fb_resources[] = {
 	{
@@ -3484,6 +3477,7 @@ struct platform_device *common_devices[] __initdata = {
 #ifdef CONFIG_MSM_CACHE_DUMP
 	&msm_cache_dump_device,
 #endif
+	&msm8960_iommu_domain_device,
 	&msm8960_cpu_idle_device,
 	&msm8960_msm_gov_device,
 #ifdef CONFIG_FB_MSM_WRITEBACK_MSM_PANEL

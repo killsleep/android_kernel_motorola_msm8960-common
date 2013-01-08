@@ -256,7 +256,6 @@ config QUP_EXCLUSIVE_TO_CAMERA
 	  by QUP in the board file as QUP is used by
 	  applications other than camera.
 
-
 config MSM_V4L2_VIDEO_OVERLAY_DEVICE
 	tristate "Qualcomm MSM V4l2 video overlay device"
 	---help---

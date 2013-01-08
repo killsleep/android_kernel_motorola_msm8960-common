@@ -1280,6 +1280,8 @@ int mipi_panel_power_en(int on)
 		if (is_smd_hd_465() && lcd_reset1 != 0)
 			gpio_set_value_cansleep(lcd_reset1, 0);
 
+		mdelay(10);
+
 		if (is_auo_hd_450()) {
 			/* There is a HW issue of qinara P1, that if we release
 			 * reg_5V during suspend, then we will have problem to
@@ -1855,7 +1857,7 @@ static struct msm_camera_sensor_flash_data flash_ov7736 = {
 };
 
 static struct msm_camera_sensor_platform_info sensor_board_info_ov7736 = {
-	.mount_angle  = 90,
+	.mount_angle  = 270,
 	.sensor_reset = 76,
 	.sensor_pwd   = 89,
 	.analog_en    = 82,
@@ -3330,10 +3332,22 @@ static __init void register_i2c_devices_from_dt(int bus)
 					msm_camera_sensor_ov8820_data.
 						sensor_platform_info->
 						digital_en = 0;
+				prop = of_get_property(child, "drv_strength",
+						&len);
+				if (prop && (len == sizeof(u8)))
+					update_camera_gpio_cfg(
+						msm_camera_sensor_ov8820_data,
+						*(uint8_t *)prop);
 				info.platform_data =
 					&msm_camera_sensor_ov8820_data;
 				break;
 			case 0x00290001: /* Omnivision_OV7736 */
+				prop = of_get_property(child, "drv_strength",
+						&len);
+				if (prop && (len == sizeof(u8)))
+					update_camera_gpio_cfg(
+						msm_camera_sensor_ov7736_data,
+						*(uint8_t *)prop);
 				info.platform_data =
 					&msm_camera_sensor_ov7736_data;
 				break;

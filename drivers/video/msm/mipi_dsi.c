@@ -36,6 +36,7 @@
 #include "mdp4.h"
 
 u32 dsi_irq;
+u32 esc_byte_ratio;
 
 static boolean tlmm_settings = FALSE;
 
@@ -74,6 +75,8 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	struct msm_fb_data_type *mfd;
 	struct msm_panel_info *pinfo;
 
+	pr_debug("Start of %s....:\n", __func__);
+
 	mfd = platform_get_drvdata(pdev);
 	pinfo = &mfd->panel_info;
 
@@ -88,24 +91,13 @@ static int mipi_dsi_off(struct platform_device *pdev)
 
 	mdp4_overlay_dsi_state_set(ST_DSI_SUSPEND);
 
-	/*
-	 * Description: dsi clock is need to perform shutdown.
-	 * mdp4_dsi_cmd_dma_busy_wait() will enable dsi clock if disabled.
-	 * also, wait until dma (overlay and dmap) finish.
+	/* make sure dsi clk is on so that
+	 * dcs commands can be sent
 	 */
-	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
-		if (mdp_rev >= MDP_REV_41) {
-			mdp4_dsi_cmd_del_timer();
-			mdp4_dsi_cmd_dma_busy_wait(mfd);
-			mdp4_dsi_blt_dmap_busy_wait(mfd);
-			mipi_dsi_mdp_busy_wait(mfd);
-		} else {
-			mdp3_dsi_cmd_dma_busy_wait(mfd);
-		}
-	} else {
-		/* video mode, wait until fifo cleaned */
-		mipi_dsi_controller_cfg(0);
-	}
+	mipi_dsi_clk_cfg(1);
+
+	/* make sure dsi_cmd_mdp is idle */
+	mipi_dsi_cmd_mdp_busy();
 
 	/*
 	 * Desctiption: change to DSI_CMD_MODE since it needed to
@@ -143,6 +135,7 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	if (mipi_dsi_pdata && mipi_dsi_pdata->panel_power_save)
 		mipi_dsi_pdata->panel_power_save(0);
 
+	mipi_dsi_unprepare_clocks();
 	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_power_save)
 		mipi_dsi_pdata->dsi_power_save(0);
 end:
@@ -151,7 +144,7 @@ end:
 	else
 		up(&mfd->dma->mutex);
 
-	pr_debug("%s-:\n", __func__);
+	pr_debug("End of %s ....:\n", __func__);
 
 	return ret;
 }
@@ -171,10 +164,13 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	int target_type = 0;
 	int old_nice;
 
+	pr_debug("Start of %s:....\n", __func__);
+
 	mfd = platform_get_drvdata(pdev);
 	fbi = mfd->fbi;
 	var = &fbi->var;
 	pinfo = &mfd->panel_info;
+	esc_byte_ratio = pinfo->mipi.esc_byte_ratio;
 
 	/*
 	 * Now first priority is to turn on LCD quickly for better
@@ -185,10 +181,13 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	if (old_nice > -20)
 		set_user_nice(current, -20);
 
+	pr_debug("%s+:\n", __func__);
+
 	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_power_save)
 		mipi_dsi_pdata->dsi_power_save(1);
 
-	cont_splash_clk_ctrl();
+	cont_splash_clk_ctrl(0);
+	mipi_dsi_prepare_clocks();
 
 	mipi_dsi_ahb_ctrl(1);
 
@@ -203,7 +202,7 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	mipi_dsi_phy_ctrl(1);
 
-	if (mdp_rev == MDP_REV_42 && mipi_dsi_pdata)
+	if (mdp_rev >= MDP_REV_42 && mipi_dsi_pdata)
 		target_type = mipi_dsi_pdata->target_type;
 
 	mipi_dsi_phy_init(0, &(mfd->panel_info), target_type);
@@ -223,8 +222,8 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	height = mfd->panel_info.yres;
 
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL) {
-		dummy_xres = mfd->panel_info.mipi.xres_pad;
-		dummy_yres = mfd->panel_info.mipi.yres_pad;
+		dummy_xres = mfd->panel_info.lcdc.xres_pad;
+		dummy_yres = mfd->panel_info.lcdc.yres_pad;
 
 		if (mdp_rev >= MDP_REV_41) {
 			MIPI_OUTP(MIPI_DSI_BASE + 0x20,
@@ -303,7 +302,8 @@ static int mipi_dsi_on(struct platform_device *pdev)
 		wmb();
 	}
 
-	ret = panel_next_on(pdev);
+	if (mfd->op_enable)
+		ret = panel_next_on(pdev);
 
 	mipi_dsi_op_mode_config(mipi->mode);
 
@@ -365,15 +365,10 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	else
 		up(&mfd->dma->mutex);
 
-	/* Restore current priority */
-	if (old_nice > -20)
-		set_user_nice(current, old_nice);
-
-	pr_debug("%s-:\n", __func__);
+	pr_debug("End of %s....:\n", __func__);
 
 	return ret;
 }
-
 
 static int mipi_dsi_resource_initialized;
 
@@ -428,7 +423,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 		disable_irq(dsi_irq);
 
-		if (mdp_rev == MDP_REV_42 && mipi_dsi_pdata &&
+		if (mdp_rev >= MDP_REV_42 && mipi_dsi_pdata &&
 			mipi_dsi_pdata->target_type == 1) {
 			/* Target type is 1 for device with (De)serializer
 			 * 0x4f00000 is the base for TV Encoder.
@@ -463,12 +458,21 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 			}
 		}
 
+		if (mipi_dsi_clk_init(pdev))
+			return -EPERM;
+
+		if (mipi_dsi_pdata->splash_is_enabled &&
+			!mipi_dsi_pdata->splash_is_enabled()) {
+			mipi_dsi_ahb_ctrl(1);
+			MIPI_OUTP(MIPI_DSI_BASE + 0x118, 0);
+			MIPI_OUTP(MIPI_DSI_BASE + 0x0, 0);
+			MIPI_OUTP(MIPI_DSI_BASE + 0x200, 0);
+			mipi_dsi_ahb_ctrl(0);
+		}
 		mipi_dsi_resource_initialized = 1;
 
 		return 0;
 	}
-
-	mipi_dsi_clk_init(pdev);
 
 	if (!mipi_dsi_resource_initialized)
 		return -EPERM;
@@ -484,6 +488,8 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 	if (pdev_list_cnt >= MSM_FB_MAX_DEV_LIST)
 		return -ENOMEM;
 
+	if (!mfd->cont_splash_done)
+		cont_splash_clk_ctrl(1);
 
 	mdp_dev = platform_device_alloc("mdp", pdev->id);
 	if (!mdp_dev)
@@ -585,8 +591,8 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL &&
 		!mfd->panel_info.clk_rate) {
-		h_period += mfd->panel_info.mipi.xres_pad;
-		v_period += mfd->panel_info.mipi.yres_pad;
+		h_period += mfd->panel_info.lcdc.xres_pad;
+		v_period += mfd->panel_info.lcdc.yres_pad;
 
 		if (lanes > 0) {
 			mfd->panel_info.clk_rate =
@@ -623,7 +629,7 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	pdev_list[pdev_list_cnt++] = pdev;
 
-	return 0;
+return 0;
 
 mipi_dsi_probe_err:
 	platform_device_put(mdp_dev);

@@ -260,7 +260,7 @@ static int msm_send_close_server(int vnode_id)
 {
 	int rc = 0;
 	struct msm_ctrl_cmd ctrlcmd;
-	D("%s\n", __func__);
+	pr_err("%s\n", __func__);
 	ctrlcmd.type	   = MSM_V4L2_CLOSE;
 	ctrlcmd.timeout_ms = 10000;
 	ctrlcmd.length	 = strnlen(g_server_dev.config_info.config_dev_name[0],
@@ -2140,7 +2140,7 @@ static long msm_v4l2_evt_notify(struct msm_cam_media_controller *mctl,
 		ERR_COPY_FROM_USER();
 		return -EFAULT;
 	}
-	D("%s: Sending event to HAL with type %x\n", __func__, v4l2_ev.type);
+	pr_err("%s: Sending event to HAL with type %x\n", __func__, v4l2_ev.type);
 	pcam = mctl->sync.pcam_sync;
 	ktime_get_ts(&v4l2_ev.timestamp);
 	v4l2_event_queue(pcam->pvdev, &v4l2_ev);
@@ -2580,6 +2580,13 @@ static int msm_cam_dev_init(struct msm_cam_v4l2_device *pcam)
 		return rc;
 	}
 
+	strlcpy(pcam->mctl.media_dev.model, QCAMERA_NAME,
+			sizeof(pcam->mctl.media_dev.model));
+	pcam->mctl.media_dev.dev = &client->dev;
+	rc = media_device_register(&pcam->mctl.media_dev);
+	pvdev->v4l2_dev = &pcam->v4l2_dev;
+	pcam->v4l2_dev.mdev = &pcam->mctl.media_dev;
+
 	/* init video device's driver interface */
 	D("sensor name = %s, sizeof(pvdev->name)=%d\n",
 		pcam->mctl.sensor_sdev->name, sizeof(pvdev->name));
@@ -2594,6 +2601,10 @@ static int msm_cam_dev_init(struct msm_cam_v4l2_device *pcam)
 	pvdev->minor	 = -1;
 	pvdev->vfl_type  = 1;
 
+	media_entity_init(&pvdev->entity, 0, NULL, 0);
+	pvdev->entity.type = MEDIA_ENT_T_DEVNODE_V4L;
+	pvdev->entity.group_id = QCAMERA_VNODE_GROUP_ID;
+
 	/* register v4l2 video device to kernel as /dev/videoXX */
 	D("video_register_device\n");
 	rc = video_register_device(pvdev,
@@ -2603,6 +2614,7 @@ static int msm_cam_dev_init(struct msm_cam_v4l2_device *pcam)
 		pr_err("%s: video_register_device failed\n", __func__);
 		goto reg_fail;
 	}
+	pvdev->entity.name = video_device_node_name(pvdev);
 	D("%s: video device registered as /dev/video%d\n",
 		__func__, pvdev->num);
 
@@ -2787,6 +2799,15 @@ int msm_sensor_register(struct v4l2_subdev *sensor_sd)
 		g_server_dev.mctl_node_info.num_mctl_nodes,
 		g_server_dev.mctl_node_info.mctl_node_name
 		[g_server_dev.mctl_node_info.num_mctl_nodes]);
+
+	/*Temporary solution to store info in media device structure
+	  until we can expand media device structure to support more
+	  device info*/
+	snprintf(pcam->mctl.media_dev.serial,
+			sizeof(pcam->mctl.media_dev.serial),
+			"%s-%d-%d", QCAMERA_NAME,
+			sdata->sensor_platform_info->mount_angle,
+			sdata->camera_type);
 
 	g_server_dev.camera_info.num_cameras++;
 	g_server_dev.mctl_node_info.num_mctl_nodes++;

@@ -32,6 +32,21 @@
 #endif
 
 ENTRY(msm_arch_idle)
+#ifdef CONFIG_KRAIT_ERRATA32
+	mrs	r0, cpsr
+	cpsid	if
+
+	mrc	p15, 7, r1, c15, c0, 5
+	bic	r2, r1, #0x20000
+	mcr	p15, 7, r2, c15, c0, 5
+
+	isb
+	wfi
+	mcr	p15, 7, r1, c15, c0, 5
+	isb
+	msr	cpsr_c, r0
+	bx	lr
+#else
 	wfi
 #ifdef CONFIG_ARCH_MSM8X60
 	mrc	p14, 1, r1, c1, c5, 4 /* read ETM PDSR to clear sticky bit */
@@ -39,6 +54,7 @@ ENTRY(msm_arch_idle)
 	isb
 #endif
 	bx	lr
+#endif
 
 ENTRY(msm_pm_collapse)
 #if defined(CONFIG_MSM_FIQ_SUPPORT)

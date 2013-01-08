@@ -330,7 +330,7 @@ static void __init size_pmem_devices(void)
 	if (!pmem_param_set) {
 		if (machine_is_msm8960_liquid())
 			pmem_size = MSM_LIQUID_PMEM_SIZE;
-		if (hdmi_is_primary)
+		if (msm8960_hdmi_as_primary_selected())
 			pmem_size = MSM_HDMI_PRIM_PMEM_SIZE;
 	}
 
@@ -498,10 +498,11 @@ static void __init adjust_mem_for_liquid(void)
 		if (machine_is_msm8960_liquid())
 			msm_ion_sf_size = MSM_LIQUID_ION_SF_SIZE;
 
-		if (hdmi_is_primary)
+		if (msm8960_hdmi_as_primary_selected())
 			msm_ion_sf_size = MSM_HDMI_PRIM_ION_SF_SIZE;
 
-		if (machine_is_msm8960_liquid() || hdmi_is_primary) {
+		if (machine_is_msm8960_liquid() ||
+			msm8960_hdmi_as_primary_selected()) {
 			for (i = 0; i < ion_pdata.nr; i++) {
 				if (ion_pdata.heaps[i].id == ION_SF_HEAP_ID) {
 					ion_pdata.heaps[i].size =
@@ -1345,7 +1346,7 @@ static struct msm_otg_platform_data msm_otg_pdata;
 static int wr_phy_init_seq[] = {
 	0x44, 0x80, /* set VBUS valid threshold
 			and disconnect valid threshold */
-	0x38, 0x81, /* update DC voltage level */
+	0x68, 0x81, /* update DC voltage level */
 	0x14, 0x82, /* set preemphasis and rise/fall time */
 	0x13, 0x83, /* set source impedance adjusment */
 	-1};
@@ -1353,7 +1354,7 @@ static int wr_phy_init_seq[] = {
 static int liquid_v1_phy_init_seq[] = {
 	0x44, 0x80,/* set VBUS valid threshold
 			and disconnect valid threshold */
-	0x3C, 0x81,/* update DC voltage level */
+	0x6C, 0x81,/* update DC voltage level */
 	0x18, 0x82,/* set preemphasis and rise/fall time */
 	0x23, 0x83,/* set source impedance sdjusment */
 	-1};
@@ -2187,6 +2188,7 @@ static struct platform_device *common_devices[] __initdata = {
 #endif
 	&msm8960_cpu_idle_device,
 	&msm8960_msm_gov_device,
+	&msm8960_iommu_domain_device,
 };
 
 static struct platform_device *sim_devices[] __initdata = {

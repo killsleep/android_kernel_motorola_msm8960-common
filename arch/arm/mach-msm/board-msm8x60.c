@@ -102,6 +102,7 @@
 #include "rpm_resources.h"
 #include "acpuclock.h"
 #include "pm-boot.h"
+#include "board-storage-common-a.h"
 
 #include <linux/ion.h>
 #include <mach/ion.h>
@@ -2659,7 +2660,7 @@ unsigned char hdmi_is_primary;
 #endif  /* CONFIG_FB_MSM_OVERLAY1_WRITEBACK */
 
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x600000
-#define MSM_PMEM_ADSP_SIZE         0x2000000
+#define MSM_PMEM_ADSP_SIZE         0x4200000
 #define MSM_PMEM_AUDIO_SIZE        0x28B000
 
 #define MSM_SMI_BASE          0x38000000
@@ -2739,6 +2740,8 @@ static struct resource msm_fb_resources[] = {
 	}
 };
 
+static void set_mdp_clocks_for_wuxga(void);
+
 static int msm_fb_detect_panel(const char *name)
 {
 	if (machine_is_msm8x60_fluid()) {
@@ -2793,8 +2796,11 @@ static int msm_fb_detect_panel(const char *name)
 
 	if (!strncmp(name, HDMI_PANEL_NAME,
 			strnlen(HDMI_PANEL_NAME,
-				PANEL_NAME_MAX_LEN)))
+				PANEL_NAME_MAX_LEN))) {
+		if (hdmi_is_primary)
+			set_mdp_clocks_for_wuxga();
 		return 0;
+	}
 
 	if (!strncmp(name, TVOUT_PANEL_NAME,
 			strnlen(TVOUT_PANEL_NAME,
@@ -3159,6 +3165,7 @@ void __init msm8x60_set_display_params(char *prim_panel, char *ext_panel)
 			pr_debug("HDMI is the primary display by"
 				" boot parameter\n");
 			hdmi_is_primary = 1;
+			set_mdp_clocks_for_wuxga();
 		}
 	}
 	if (strnlen(ext_panel, PANEL_NAME_MAX_LEN)) {
@@ -8383,6 +8390,7 @@ static struct mmc_platform_data msm8x60_sdc1_data = {
 	.msmsdcc_fmax	= 48000000,
 	.nonremovable	= 1,
 	.pclk_src_dfab	= 1,
+	.msm_bus_voting_data = &sps_to_ddr_bus_voting_data,
 };
 #endif
 
@@ -8401,6 +8409,7 @@ static struct mmc_platform_data msm8x60_sdc2_data = {
 #ifdef CONFIG_MSM_SDIO_AL
 	.is_sdio_al_client = 1,
 #endif
+	.msm_bus_voting_data = &sps_to_ddr_bus_voting_data,
 };
 #endif
 
@@ -8421,6 +8430,7 @@ static struct mmc_platform_data msm8x60_sdc3_data = {
 	.msmsdcc_fmax	= 48000000,
 	.nonremovable	= 0,
 	.pclk_src_dfab  = 1,
+	.msm_bus_voting_data = &sps_to_ddr_bus_voting_data,
 };
 #endif
 
@@ -8435,6 +8445,7 @@ static struct mmc_platform_data msm8x60_sdc4_data = {
 	.nonremovable	= 0,
 	.pclk_src_dfab  = 1,
 	.cfg_mpm_sdiowakeup = msm_sdcc_cfg_mpm_sdiowakeup,
+	.msm_bus_voting_data = &sps_to_ddr_bus_voting_data,
 };
 #endif
 
@@ -8453,6 +8464,7 @@ static struct mmc_platform_data msm8x60_sdc5_data = {
 #ifdef CONFIG_MSM_SDIO_AL
 	.is_sdio_al_client = 1,
 #endif
+	.msm_bus_voting_data = &sps_to_ddr_bus_voting_data,
 };
 #endif
 
@@ -9234,51 +9246,6 @@ static struct msm_bus_vectors mdp_init_vectors[] = {
 	},
 };
 
-#ifdef CONFIG_FB_MSM_HDMI_AS_PRIMARY
-static struct msm_bus_vectors hdmi_as_primary_vectors[] = {
-	/* If HDMI is used as primary */
-	 {
-		.src = MSM_BUS_MASTER_MDP_PORT0,
-		.dst = MSM_BUS_SLAVE_SMI,
-		.ab = 2000000000,
-		.ib = 2000000000,
-	 },
-	 /* Master and slaves can be from different fabrics */
-	 {
-		.src = MSM_BUS_MASTER_MDP_PORT0,
-		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 2000000000,
-		.ib = 2000000000,
-	 },
-};
-
-static struct msm_bus_paths mdp_bus_scale_usecases[] = {
-	{
-		ARRAY_SIZE(mdp_init_vectors),
-		mdp_init_vectors,
-	},
-	{
-		ARRAY_SIZE(hdmi_as_primary_vectors),
-		hdmi_as_primary_vectors,
-	},
-	{
-		ARRAY_SIZE(hdmi_as_primary_vectors),
-		hdmi_as_primary_vectors,
-	},
-	{
-		ARRAY_SIZE(hdmi_as_primary_vectors),
-		hdmi_as_primary_vectors,
-	},
-	{
-		ARRAY_SIZE(hdmi_as_primary_vectors),
-		hdmi_as_primary_vectors,
-	},
-	{
-		ARRAY_SIZE(hdmi_as_primary_vectors),
-		hdmi_as_primary_vectors,
-	},
-};
-#else
 #ifdef CONFIG_FB_MSM_LCDC_DSUB
 static struct msm_bus_vectors mdp_sd_smi_vectors[] = {
 	/* Default case static display/UI/2d/3d if FB SMI */
@@ -9473,7 +9440,6 @@ static struct msm_bus_paths mdp_bus_scale_usecases[] = {
 		mdp_1080p_vectors,
 	},
 };
-#endif
 static struct msm_bus_scale_pdata mdp_bus_scale_pdata = {
 	mdp_bus_scale_usecases,
 	ARRAY_SIZE(mdp_bus_scale_usecases),
@@ -9694,27 +9660,9 @@ static int atv_dac_power(int on)
 }
 #endif
 
-#ifdef CONFIG_FB_MSM_MIPI_DSI
-int mdp_core_clk_rate_table[] = {
-	85330000,
-	128000000,
-	160000000,
-	200000000,
-};
-#else
-int mdp_core_clk_rate_table[] = {
-	59080000,
-	128000000,
-	128000000,
-	200000000,
-};
-#endif
-
 static struct msm_panel_common_pdata mdp_pdata = {
 	.gpio = MDP_VSYNC_GPIO,
-	.mdp_core_clk_rate = 59080000,
-	.mdp_core_clk_table = mdp_core_clk_rate_table,
-	.num_mdp_clk = ARRAY_SIZE(mdp_core_clk_rate_table),
+	.mdp_max_clk = 200000000,
 #ifdef CONFIG_MSM_BUS_SCALING
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
@@ -9724,6 +9672,7 @@ static struct msm_panel_common_pdata mdp_pdata = {
 #else
 	.mem_hid = MEMTYPE_EBI1,
 #endif
+	.mdp_iommu_split_domain = 0,
 };
 
 static void __init reserve_mdp_memory(void)
@@ -9806,9 +9755,7 @@ static struct tvenc_platform_data atv_pdata = {
 static void __init msm_fb_add_devices(void)
 {
 #ifdef CONFIG_FB_MSM_LCDC_DSUB
-	mdp_pdata.mdp_core_clk_table = NULL;
-	mdp_pdata.num_mdp_clk = 0;
-	mdp_pdata.mdp_core_clk_rate = 200000000;
+	mdp_pdata.mdp_max_clk = 200000000;
 #endif
 	if (machine_is_msm8x60_rumi3())
 		msm_fb_register_device("mdp", NULL);
@@ -9827,6 +9774,40 @@ static void __init msm_fb_add_devices(void)
 	msm_fb_register_device("tvenc", &atv_pdata);
 	msm_fb_register_device("tvout_device", NULL);
 #endif
+}
+
+/**
+ * Set MDP clocks to high frequency to avoid underflow when
+ * using high resolution 1200x1920 WUXGA/HDMI as primary panels
+ */
+static void set_mdp_clocks_for_wuxga(void)
+{
+	mdp_sd_smi_vectors[0].ab = 2000000000;
+	mdp_sd_smi_vectors[0].ib = 2000000000;
+	mdp_sd_smi_vectors[1].ab = 2000000000;
+	mdp_sd_smi_vectors[1].ib = 2000000000;
+
+	mdp_sd_ebi_vectors[0].ab = 2000000000;
+	mdp_sd_ebi_vectors[0].ib = 2000000000;
+	mdp_sd_ebi_vectors[1].ab = 2000000000;
+	mdp_sd_ebi_vectors[1].ib = 2000000000;
+
+	mdp_vga_vectors[0].ab = 2000000000;
+	mdp_vga_vectors[0].ib = 2000000000;
+	mdp_vga_vectors[1].ab = 2000000000;
+	mdp_vga_vectors[1].ib = 2000000000;
+
+	mdp_720p_vectors[0].ab = 2000000000;
+	mdp_720p_vectors[0].ib = 2000000000;
+	mdp_720p_vectors[1].ab = 2000000000;
+	mdp_720p_vectors[1].ib = 2000000000;
+
+	mdp_1080p_vectors[0].ab = 2000000000;
+	mdp_1080p_vectors[0].ib = 2000000000;
+	mdp_1080p_vectors[1].ab = 2000000000;
+	mdp_1080p_vectors[1].ib = 2000000000;
+
+	mdp_pdata.mdp_max_clk = 200000000;
 }
 
 #if (defined(CONFIG_MARIMBA_CORE)) && \

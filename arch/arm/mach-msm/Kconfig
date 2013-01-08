@@ -32,8 +32,6 @@ config ARCH_MSM7X27
 	select REGULATOR
 	select MULTI_IRQ_HANDLER
 	select MSM_PROC_COMM_REGULATOR
-	select CLEANCACHE
-	select QCACHE
 	select MSM_PM2 if PM
 
 config ARCH_MSM7X30
@@ -162,12 +160,16 @@ config ARCH_MSM8960
 	select ARCH_MEMORY_PROBE if ENABLE_DMM
 	select ARCH_MEMORY_REMOVE if ENABLE_DMM
 	select FIX_MOVABLE_ZONE if ENABLE_DMM
-	select CLEANCACHE
-	select QCACHE
 	select MSM_MULTIMEDIA_USE_ION
 	select MULTI_IRQ_HANDLER
 	select MSM_PM8X60 if PM
 	select HOLES_IN_ZONE if SPARSEMEM
+	select KRAIT_ERRATA32
+	select MSM_ULTRASOUND_A
+	select GENERIC_TIME_VSYSCALL
+	select USE_USER_ACCESSIBLE_TIMERS
+	select ARM_USE_USER_ACCESSIBLE_TIMERS
+	select MSM_USE_USER_ACCESSIBLE_TIMERS
 
 config ARCH_MSM8930
 	bool "MSM8930"
@@ -205,6 +207,10 @@ config ARCH_MSM8930
 	select MULTI_IRQ_HANDLER
 	select MSM_PM8X60 if PM
 	select HOLES_IN_ZONE if SPARSEMEM
+	select GENERIC_TIME_VSYSCALL
+	select USE_USER_ACCESSIBLE_TIMERS
+	select ARM_USE_USER_ACCESSIBLE_TIMERS
+	select MSM_USE_USER_ACCESSIBLE_TIMERS
 
 config ARCH_APQ8064
 	bool "APQ8064"
@@ -222,6 +228,10 @@ config ARCH_APQ8064
 	select MULTI_IRQ_HANDLER
 	select MSM_PM8X60 if PM
 	select HOLES_IN_ZONE if SPARSEMEM
+	select GENERIC_TIME_VSYSCALL
+	select USE_USER_ACCESSIBLE_TIMERS
+	select ARM_USE_USER_ACCESSIBLE_TIMERS
+	select MSM_USE_USER_ACCESSIBLE_TIMERS
 
 config ARCH_MSMCOPPER
 	bool "MSM Copper"
@@ -1656,6 +1666,12 @@ config MSM_PIL_RIVA
 	  Riva is the wireless subsystem processor used in bluetooth, wireless
 	  LAN, and FM software applications.
 
+config MSM_INSECURE_PIL_RIVA
+	bool "Force Riva PIL to insecure mode"
+	depends on MSM_PIL_RIVA
+	help
+	  Force Riva PIL to use non-secure boot.
+
 config MSM_PIL_TZAPPS
 	tristate "TZApps Boot Support"
 	depends on MSM_PIL
@@ -1801,6 +1817,17 @@ config IOMMU_PGTABLES_L2
 	 However, with large multimedia buffers, the TLB should mostly contain
 	 section mappings and TLB misses should be quite infrequent.
 	 Most people can probably say Y here.
+
+config MSM_IOMMU_CONFIG_GLOBAL_REG_SPACE
+	bool "Configure the IOMMU global space from Linux"
+	depends on MSM_IOMMU=y
+	help
+	 Allow the IOMMU driver to configure the IOMMU global register space.
+	 This is normally handled by the secure environment and should not be
+	 necessary in a production system.
+	 Select 'Y' here if the system is operating without a secure environment.
+
+	 For production builds, say 'N' here.
 
 config MSM_DIRECT_SCLK_ACCESS
 	bool "Direct access to the SCLK timer"
@@ -2151,5 +2178,18 @@ config MSM_DCVS
 	  The DCVS manager allows idle driver to feed the idle information to the
 	  algorithm and the algorithm returns a frequency for the core which is
 	  passed to the frequency change driver.
+
+config KRAIT_ERRATA32
+	bool "Use workaround for MSM8960 Errata 32"
+	default n
+	help
+	  Disable WFI/WFE until used for MSM8960 Errata 32.
+
+config MSM_USE_USER_ACCESSIBLE_TIMERS
+	bool "Enables mapping an MSM timer counter page to user space."
+	depends on ARM_USE_USER_ACCESSIBLE_TIMERS
+	help
+	  Enables MSM-specific user accessible timers via a shared
+	  memory page containing the cycle counter.
 
 endif

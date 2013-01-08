@@ -186,8 +186,6 @@ static struct usb_configuration android_config_driver = {
 	.label		= "android",
 	.unbind		= android_unbind_config,
 	.bConfigurationValue = 1,
-	.bmAttributes	= USB_CONFIG_ATT_ONE | USB_CONFIG_ATT_SELFPOWER,
-	.bMaxPower	= 0xFA, /* 500ma */
 };
 
 static int cable_connected;
@@ -1621,6 +1619,7 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 
 	sscanf(buff, "%d", &enabled);
 	if (enabled && !dev->enabled) {
+		cdev->next_string_id = 0;
 		if (pc_command_adb && ctrl_adb_pid) {
 			adb_enabled = android_find_function(dev, "adb");
 			if (adb_enabled && (pc_command_adb == PC_COMMAND_ADB_OFF)) {
@@ -1890,7 +1889,6 @@ static int android_bind(struct usb_composite_dev *cdev)
 		device_desc.bcdDevice = __constant_cpu_to_le16(0x9999);
 	}
 
-	usb_gadget_set_selfpowered(gadget);
 	dev->cdev = cdev;
 
 	return 0;
@@ -1996,6 +1994,11 @@ static void android_disconnect(struct usb_gadget *gadget)
 	unsigned long flags;
 
 	composite_disconnect(gadget);
+	/* accessory HID support can be active while the
+	   accessory function is not actually enabled,
+	   so we need to inform it when we are disconnected.
+	 */
+	acc_disconnect();
 
 	spin_lock_irqsave(&cdev->lock, flags);
 	dev->connected = 0;
