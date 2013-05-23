@@ -1,7 +1,7 @@
 /* include/linux/msm_mdp.h
  *
  * Copyright (C) 2007 Google Incorporated
- * Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -274,8 +274,10 @@ struct msmfb_writeback_data {
 	struct msmfb_img img;
 };
 
+#define MDP_PP_OPS_ENABLE 0x1
 #define MDP_PP_OPS_READ 0x2
 #define MDP_PP_OPS_WRITE 0x4
+#define MDP_PP_OPS_DISABLE 0x8
 
 struct mdp_qseed_cfg {
 	uint32_t table_num;
@@ -387,9 +389,9 @@ enum {
 };
 
 /*
-mdp_histogram_start_req is used to provide the parameters for
-histogram start request
-*/
+ * mdp_histogram_start_req is used to provide the parameters for
+ *histogram start request
+ */
 
 struct mdp_histogram_start_req {
 	uint32_t block;
@@ -400,10 +402,8 @@ struct mdp_histogram_start_req {
 
 
 /*
-
-   mdp_histogram_data is used to return the histogram data, once
-   the histogram is done/stopped/cance
-
+ * mdp_histogram_data is used to return the histogram data, once
+ * the histogram is done/stopped/cance
  */
 
 
@@ -542,7 +542,6 @@ struct mdp_display_commit {
 	uint32_t flags;
 	uint32_t wait_for_finish;
 	struct fb_var_screeninfo var;
-	struct mdp_buf_fence buf_fence;
 };
 
 struct mdp_page_protection {
