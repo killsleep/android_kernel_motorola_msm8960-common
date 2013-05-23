@@ -965,7 +965,6 @@ config USB_G_ANDROID
 config USB_ANDROID_USBNET
 	boolean "Android gadget usbnet function"
 	depends on USB_ANDROID
-	default y
 	help
 	  Provides usbnet function for android gadget driver.
 
@@ -1089,12 +1088,6 @@ config USB_G_WEBCAM
 	  dynamically linked module called "g_webcam".
 
 endchoice
-
-config USB_MOT_ANDROID
-        tristate "Mot Android USB"
-        depends on USB_G_ANDROID
-        help
-          This option adds CDROM and Mode switching support to the Android gadget.
 
 config USB_CSW_HACK
 	boolean "USB Mass storage csw hack Feature"

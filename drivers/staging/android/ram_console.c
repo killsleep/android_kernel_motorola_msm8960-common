@@ -247,7 +247,7 @@ ram_console_write(struct console *console, const char *s, unsigned int count)
 static struct console ram_console = {
 	.name	= "ram",
 	.write	= ram_console_write,
-	.flags	= CON_PRINTBUFFER | CON_ENABLED,
+	.flags	= CON_PRINTBUFFER | CON_ENABLED | CON_ANYTIME,
 	.index	= -1,
 };
 
@@ -346,7 +346,7 @@ ram_console_save_old(struct ram_console_buffer *buffer, const char *bootinfo,
 	ram_console_ext_oldbuf_push(ptr);
 }
 
-static int __init ram_console_init(struct ram_console_buffer *buffer,
+static int noinline __init ram_console_init(struct ram_console_buffer *buffer,
 				   size_t buffer_size, const char *bootinfo,
 				   char *old_buf)
 {

@@ -275,6 +275,7 @@ struct msm_ctrl_cmd {
 	uint32_t timeout_ms;
 	int resp_fd; /* FIXME: to be used by the kernel, pass-through for now */
 	int vnode_id;  /* video dev id. Can we overload resp_fd? */
+	uint32_t evt_id;
 	uint32_t stream_type; /* used to pass value to qcamera server */
 	int config_ident; /*used as identifier for config node*/
 };
@@ -358,7 +359,7 @@ struct msm_isp_event_ctrl {
 		struct msm_cam_evt_divert_frame div_frame;
 		struct msm_mctl_pp_event_info pp_event_info;
 	} isp_data;
-	uint32_t trans_id;
+	uint32_t evt_id;
 };
 
 #define MSM_CAM_RESP_CTRL              0
@@ -617,7 +618,6 @@ struct msm_frame {
 
 	struct ion_allocation_data ion_alloc;
 	struct ion_fd_data fd_data;
-	int ion_dev_fd;
 };
 
 enum msm_st_frame_packing {
@@ -1205,9 +1205,5 @@ struct img_plane_info {
 	uint32_t sp_y_offset;
 	uint8_t vpe_can_use;
 };
-
-#define QCAMERA_NAME "qcamera"
-#define QCAMERA_DEVICE_GROUP_ID 1
-#define QCAMERA_VNODE_GROUP_ID 2
 
 #endif /* __LINUX_MSM_CAMERA_H */
